@@ -1,12 +1,12 @@
-name: Test
+name: Build and test CotEditor
 
-on: [push, pull_request]
+on: [push, pull_request, workflow_dispatch]
 
 permissions:
   contents: read
 
 env:
-  XCODE_VERSION: "27.0"
+  XCODE_VERSION: "27.2"
 
 jobs:
   packages:
@@ -42,8 +42,9 @@ jobs:
         swift test --package-path "Packages/${{ matrix.package }}"
 
   macOS:
-    name: Tests for CotEditor
+    name: Build and test macOS app
     runs-on: xcode-27
+    timeout-minutes: 60
 
     steps:
     - name: Set Xcode version
@@ -72,3 +73,21 @@ jobs:
           exit 1
         fi
         kill "${app_pid}" 2>/dev/null || true
+    - name: Package application
+      run: |
+        set -euo pipefail
+        app_path="/tmp/CotEditorInstall/Applications/CotEditor.app"
+        codesign --verify --deep --strict "$app_path"
+        ditto -c -k --sequesterRsrc --keepParent "$app_path" "$RUNNER_TEMP/CotEditor-arm64.zip"
+        cd "$RUNNER_TEMP"
+        shasum -a 256 CotEditor-arm64.zip > CotEditor-arm64.zip.sha256
+    - name: Upload application
+      uses: actions/upload-artifact@v7
+      with:
+        name: CotEditor-arm64
+        path: |
+          ${{ runner.temp }}/CotEditor-arm64.zip
+          ${{ runner.temp }}/CotEditor-arm64.zip.sha256
+        if-no-files-found: error
+        compression-level: 0
+        retention-days: 14

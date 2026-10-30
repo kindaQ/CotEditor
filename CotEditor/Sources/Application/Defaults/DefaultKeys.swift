@@ -33,6 +33,7 @@ extension DefaultKeys {
     static let quitAlwaysKeepsWindows = DefaultKey<Bool>("NSQuitAlwaysKeepsWindows")
     static let noDocumentOnLaunchOption = RawRepresentableDefaultKey<NoDocumentOnLaunchOption>("noDocumentOnLaunchOption")
     static let enablesAutosaveInPlace = DefaultKey<Bool>("enablesAutosaveInPlace")
+    static let hasConfiguredSessionCache = DefaultKey<Bool>("hasConfiguredSessionCache")
     static let documentConflictOption = RawRepresentableDefaultKey<DocumentConflictOption>("documentConflictOption")
     static let suppressesInconsistentLineEndingAlert = DefaultKey<Bool>("suppressesInconsistentLineEndingAlert")
     static let enablesRemoteEditing = DefaultKey<Bool>("enablesRemoteEditing")

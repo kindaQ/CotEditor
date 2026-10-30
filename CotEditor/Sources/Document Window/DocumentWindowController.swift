@@ -191,6 +191,23 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate {
     
     // MARK: Window Controller Methods
     
+    override func showWindow(_ sender: Any?) {
+        
+        super.showWindow(sender)
+        
+        if let window, !self.isDirectoryDocument, window.tabGroup?.isTabBarVisible == false {
+            window.toggleTabBar(sender)
+        }
+    }
+    
+    
+    @objc private func closeWindowPreservingTabs(_ sender: Any?) {
+        
+        guard let window = self.window else { return }
+        Task { await SessionController.shared.closeWindow(window) }
+    }
+    
+    
     override unowned(unsafe) var document: AnyObject? {
         
         didSet {
@@ -342,6 +359,14 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate {
     ///
     /// - Parameter document: The new document.
     private func updateDocument(_ document: DataDocument?) {
+        
+        if !self.isDirectoryDocument, let window {
+            let cachesSession = (document as? TextDocument)?.usesSessionCache == true
+            // Local tabs are restored independently of macOS Resume settings.
+            window.isRestorable = !cachesSession
+            window.standardWindowButton(.closeButton)?.target = cachesSession ? self : window
+            window.standardWindowButton(.closeButton)?.action = cachesSession ? #selector(closeWindowPreservingTabs(_:)) : #selector(NSWindow.performClose(_:))
+        }
         
         if let viewController = self.contentViewController as? WindowContentViewController, viewController.document != document {
             viewController.document = document

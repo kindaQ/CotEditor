@@ -64,6 +64,7 @@ extension NSTextView: EditorCounter.Source { }
         static let syntax = "syntax"
         static let originalContentString = "originalContentString"
         static let encoding = "encoding"
+        static let sessionDraftID = "sessionDraftID"
     }
     
     
@@ -71,6 +72,7 @@ extension NSTextView: EditorCounter.Source { }
     
     @objc var isEditable = true  { didSet { self.invalidateRestorableState() } }  // @objc for AppleScript support
     var isTransient = false  // untitled & empty document that was created automatically
+    var sessionDraftID = UUID()
     
     nonisolated var isVerticalText: Bool {
         
@@ -167,6 +169,7 @@ extension NSTextView: EditorCounter.Source { }
         coder.encode(self.isVerticalText, forKey: SerializationKey.isVerticalText)
         coder.encode(self.suppressesInconsistentLineEndingAlert, forKey: SerializationKey.suppressesInconsistentLineEndingAlert)
         coder.encode(self.syntaxName, forKey: SerializationKey.syntax)
+        coder.encode(self.sessionDraftID.uuidString, forKey: SerializationKey.sessionDraftID)
         
         // store unencoded string but only when incompatible
         if !self.canBeConverted() {
@@ -179,6 +182,12 @@ extension NSTextView: EditorCounter.Source { }
     override func restoreState(with coder: NSCoder) {
         
         super.restoreState(with: coder)
+        
+        if let value = coder.decodeObject(of: NSString.self, forKey: SerializationKey.sessionDraftID) as? String,
+           let id = UUID(uuidString: value)
+        {
+            self.sessionDraftID = id
+        }
         
         if coder.containsValue(forKey: SerializationKey.allowsLossySaving) {
             self.allowsLossySaving = coder.decodeBool(forKey: SerializationKey.allowsLossySaving)
@@ -611,6 +620,17 @@ extension NSTextView: EditorCounter.Source { }
     
     override func canClose(withDelegate delegate: Any, shouldClose shouldCloseSelector: Selector?, contextInfo: UnsafeMutableRawPointer?) {
         
+        if self.isSessionDraft {
+            let context = DelegateContext(delegate: delegate, selector: shouldCloseSelector, contextInfo: contextInfo)
+            do {
+                try SessionController.shared.cacheDraft(self)
+                context.perform(from: self, flag: true)
+            } catch {
+                self.presentErrorAsSheet(error) { _ in context.perform(from: self, flag: false) }
+            }
+            return
+        }
+        
         // suppress save dialog if the content is empty and not saved explicitly
         suppression: if self.isDraft || self.fileURL == nil, self.textStorage.string.isEmpty {
             // delete autosaved file if exists
@@ -689,6 +709,10 @@ extension NSTextView: EditorCounter.Source { }
         self.syntaxController.cancel()
         self.urlDetector?.cancel()
         self.lineEndingScanner.cancel()
+        
+        if self.usesSessionCache {
+            SessionController.shared.documentDidClose()
+        }
     }
     
     
@@ -1687,6 +1711,58 @@ extension NSTextView: EditorCounter.Source { }
     private func showWarningInspector() {
         
         (self.windowController?.contentViewController as? WindowContentViewController)?.showInspector(pane: .warnings)
+    }
+}
+
+
+// MARK: Session Cache
+
+extension TextDocument {
+    
+    var usesSessionCache: Bool {
+        
+        !(self is RemoteDocument)
+    }
+    
+    
+    var isSessionDraft: Bool {
+        
+        self.usesSessionCache && (self.fileURL == nil || self.isDraft)
+    }
+    
+    
+    var sessionTabID: String {
+        
+        self.isSessionDraft ? self.sessionDraftID.uuidString : (self.fileURL?.standardizedFileURL.absoluteString ?? self.sessionDraftID.uuidString)
+    }
+    
+    
+    func makeSessionTab() throws -> CachedSession.Tab {
+        
+        if self.isSessionDraft {
+            return CachedSession.Tab(content: .draft(CachedSession.Draft(
+                id: self.sessionDraftID, title: self.displayName, encoding: self.fileEncoding.encoding.rawValue,
+                withUTF8BOM: self.fileEncoding.withUTF8BOM, lineEnding: self.lineEnding.string,
+                syntaxName: self.syntaxName, isVerticalText: self.isVerticalText)))
+        }
+        guard let fileURL = self.fileURL else { throw CocoaError(.fileNoSuchFile) }
+        return CachedSession.Tab(content: .file(url: fileURL, bookmark: try? fileURL.bookmarkData(options: .withSecurityScope)))
+    }
+    
+    
+    func restoreSessionDraft(_ draft: CachedSession.Draft, text: String) {
+        
+        self.sessionDraftID = draft.id
+        self.displayName = draft.title
+        self.isTransient = false
+        self.fileEncoding = FileEncoding(encoding: String.Encoding(rawValue: draft.encoding), withUTF8BOM: draft.withUTF8BOM)
+        if let lineEnding = LineEnding.allCases.first(where: { $0.string == draft.lineEnding }) {
+            self.lineEnding = lineEnding
+        }
+        self.isVerticalText = draft.isVerticalText
+        self.textStorage.replaceCharacters(in: self.textStorage.range, with: text)
+        self.setSyntax(name: draft.syntaxName)
+        self.updateChangeCount(.changeDone)
     }
 }
 

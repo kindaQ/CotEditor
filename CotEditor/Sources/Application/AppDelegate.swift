@@ -119,6 +119,12 @@ extension Logger {
             .compactMapValues(\.self)
             .mapKeys(\.rawValue)
         UserDefaults.standard.register(defaults: defaults)
+        
+        // Apply the document-saving behavior before TextDocument caches its autosave setting.
+        if !UserDefaults.standard[.hasConfiguredSessionCache] {
+            UserDefaults.standard[.enablesAutosaveInPlace] = false
+            UserDefaults.standard[.hasConfiguredSessionCache] = true
+        }
     }
     
     
@@ -166,6 +172,8 @@ extension Logger {
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         
+        SessionController.shared.restoreOnLaunchIfNeeded()
+        
         RemoteEditingController.shared.start()
         KeyBindingManager.shared.applyShortcutsToMainMenu()
         CloudSettingsManager.shared.start()
@@ -191,6 +199,14 @@ extension Logger {
     
     
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        
+        do {
+            try SessionController.shared.persistCurrentSession()
+        } catch {
+            sender.presentError(error)
+            self.needsRelaunch = false
+            return .terminateCancel
+        }
         
         if UserDefaults.standard[.syncsSettings] || CloudSettingsManager.shared.hasPendingSave {
             Task {

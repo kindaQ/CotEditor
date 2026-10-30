@@ -25,6 +25,7 @@
 //
 
 import AppKit.NSFont
+import AppKit.NSWindow
 import Defaults
 import RMate
 import StringUtils
@@ -37,7 +38,8 @@ struct DefaultSettings {
             // General
             .quitAlwaysKeepsWindows: true,
             .noDocumentOnLaunchOption: NoDocumentOnLaunchOption.untitledDocument.rawValue,
-            .enablesAutosaveInPlace: true,
+            .enablesAutosaveInPlace: false,
+            .hasConfiguredSessionCache: false,
             .documentConflictOption: DocumentConflictOption.revert.rawValue,
             .suppressesInconsistentLineEndingAlert: false,
             .enablesRemoteEditing: false,
@@ -60,7 +62,7 @@ struct DefaultSettings {
             .pinsThemeAppearance: false,
             
             // Window
-            .windowTabbing: -1,  // = Respect System Setting
+            .windowTabbing: NSWindow.UserTabbingPreference.always.rawValue,
             .showLineNumbers: true,
             .showInvisibles: false,
             .showInvisibleNewLine: true,

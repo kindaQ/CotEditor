@@ -24,6 +24,7 @@
 //
 
 import AppKit.NSDocument
+import AppKit.NSWindowController
 
 // MARK: Notification Messages
 
@@ -132,12 +133,18 @@ extension NSDocument {
     /// Asks the user for the handling unsaved changes and waits for the answer.
     ///
     /// - Returns: Returns `false` when the user cancels the operation, otherwise `true`.
-    final func canClose() async -> Bool {
+    final func canClose(windowController: NSWindowController? = nil) async -> Bool {
         
         await withCheckedContinuation { continuation in
-            self.canClose(withDelegate: self,
-                          shouldClose: #selector(self.document(_:shouldClose:contextInfo:)),
-                          contextInfo: bridgeWrapped(continuation))
+            if let windowController {
+                self.shouldCloseWindowController(windowController, delegate: self,
+                                                 shouldClose: #selector(self.document(_:shouldClose:contextInfo:)),
+                                                 contextInfo: bridgeWrapped(continuation))
+            } else {
+                self.canClose(withDelegate: self,
+                              shouldClose: #selector(self.document(_:shouldClose:contextInfo:)),
+                              contextInfo: bridgeWrapped(continuation))
+            }
         }
     }
     

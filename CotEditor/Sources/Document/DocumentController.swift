@@ -267,13 +267,21 @@ protocol AdditionalDocumentPreparing: NSDocument {
     
     override func closeAllDocuments(withDelegate delegate: Any?, didCloseAllSelector: Selector?, contextInfo: UnsafeMutableRawPointer?) {
         
-        guard (NSApp.delegate as? AppDelegate)?.needsRelaunch == true else {
-            return super.closeAllDocuments(withDelegate: delegate, didCloseAllSelector: didCloseAllSelector, contextInfo: contextInfo)
-        }
-        
         let context = DelegateContext(delegate: delegate, selector: didCloseAllSelector, contextInfo: contextInfo)
         
-        super.closeAllDocuments(withDelegate: self, didCloseAllSelector: #selector(documentController(_:didCloseAll:contextInfo:)), contextInfo: bridgeWrapped(context))
+        Task {
+            let didCloseAll = await SessionController.shared.close(self.documents)
+            if !didCloseAll {
+                (NSApp.delegate as? AppDelegate)?.needsRelaunch = false
+            }
+            context.perform(from: self, flag: didCloseAll)
+        }
+    }
+    
+    
+    override func reviewUnsavedDocuments(withAlertTitle title: String?, cancellable: Bool, delegate: Any?, didReviewAllSelector: Selector?, contextInfo: UnsafeMutableRawPointer?) {
+        
+        self.closeAllDocuments(withDelegate: delegate, didCloseAllSelector: didReviewAllSelector, contextInfo: contextInfo)
     }
     
     
@@ -402,6 +410,8 @@ protocol AdditionalDocumentPreparing: NSDocument {
     /// Performs the user-defined action on the open/reopen event.
     func performOnLaunchAction() {
         
+        guard !SessionController.shared.restoreOnLaunchIfNeeded() else { return }
+        
         switch UserDefaults.standard[.noDocumentOnLaunchOption] {
             case .untitledDocument:
                 self.newDocument(nil)
@@ -512,25 +522,6 @@ protocol AdditionalDocumentPreparing: NSDocument {
         {
             throw DocumentOpeningError(.tooLarge(size: Int64(fileSize)), url: url)
         }
-    }
-    
-    
-    /// Callback from document after calling `closeAllDocuments(withDelegate:didCloseAllSelector:contextInfo)`.
-    ///
-    /// - Parameters:
-    ///   - documentController: The sender.
-    ///   - didCloseAll: The flag if the sender close all documents.
-    ///   - contextInfo: The context info.
-    @objc private func documentController(_ documentController: NSDocumentController, didCloseAll: Bool, contextInfo: UnsafeMutableRawPointer) {
-        
-        // cancel relaunching
-        if !didCloseAll {
-            (NSApp.delegate as? AppDelegate)?.needsRelaunch = false
-        }
-        
-        // manually invoke the original delegate method
-        let context: DelegateContext = bridgeUnwrapped(contextInfo)
-        context.perform(from: self, flag: didCloseAll)
     }
     
     

@@ -175,6 +175,14 @@ import Darwin
         app.terminate()
         app.launch()
         self.assertMergedTabs(app, texts: texts)
+
+        app.windows.firstMatch.tabs.element(boundBy: 1).buttons.firstMatch.click()
+        let remainingTexts = [texts[0], texts[2], texts[3]]
+        self.assertMergedTabs(app, texts: remainingTexts)
+        self.closeSessionWindow(app)
+        app.terminate()
+        app.launch()
+        self.assertMergedTabs(app, texts: remainingTexts)
     }
 
 

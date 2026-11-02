@@ -103,6 +103,24 @@ final class DocumentWindow: NSWindow {
     
     
     // MARK: Actions
+
+    override func performClose(_ sender: Any?) {
+
+        guard let controller = self.windowController,
+              let document = controller.document as? TextDocument,
+              document.usesSessionCache
+        else {
+            super.performClose(sender)
+            return
+        }
+
+        // Close-tab commands must validate this document directly. AppKit's default
+        // implementation invokes the standard window button, whose action caches the tab group.
+        Task {
+            guard await document.canClose(windowController: controller) else { return }
+            document.close()
+        }
+    }
     
     override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
         

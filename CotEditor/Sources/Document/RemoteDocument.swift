@@ -83,6 +83,12 @@ import RMate
     
     // MARK: Document Methods
     
+    override nonisolated static var autosavesInPlace: Bool {
+        
+        true
+    }
+    
+    
     override static var readableTypes: [String] {
         
         // use the types registered for TextDocument in Info.plist

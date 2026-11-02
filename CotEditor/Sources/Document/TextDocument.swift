@@ -220,7 +220,7 @@ extension NSTextView: EditorCounter.Source { }
     
     // MARK: Document Methods
     
-    override nonisolated static var autosavesInPlace: Bool {
+    override nonisolated class var autosavesInPlace: Bool {
         
         // avoid changing the value while the application is running
         struct InitialValue { static let autosavesInPlace = UserDefaults.standard[.enablesAutosaveInPlace] }

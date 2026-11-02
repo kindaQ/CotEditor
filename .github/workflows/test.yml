@@ -59,6 +59,22 @@ jobs:
     - name: Unit Test for CotEditor
       run: |
         xcodebuild test -scheme CotEditor CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= CODE_SIGN_ENTITLEMENTS_SUFFIX=-AdHoc -skipPackagePluginValidation
+    - name: Test session restoration through the UI
+      run: |
+        xcodebuild test -scheme CotEditor -testPlan "UI Tests" \
+          -only-testing:"UI Tests/UITests/testRestoresDraftTabsWhenReopened" \
+          -only-testing:"UI Tests/UITests/testRestoresDraftTabsAfterProcessRelaunch" \
+          -resultBundlePath "$RUNNER_TEMP/SessionCacheUITests.xcresult" \
+          CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= \
+          CODE_SIGN_ENTITLEMENTS_SUFFIX=-AdHoc -skipPackagePluginValidation
+    - name: Upload UI test results
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: SessionCache-UI-test-results
+        path: ${{ runner.temp }}/SessionCacheUITests.xcresult
+        if-no-files-found: ignore
+        retention-days: 14
     - name: Release Build Smoke Test
       run: |
         set -euo pipefail

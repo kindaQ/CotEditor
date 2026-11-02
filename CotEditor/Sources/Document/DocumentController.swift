@@ -408,9 +408,11 @@ protocol AdditionalDocumentPreparing: NSDocument {
     
     
     /// Performs the user-defined action on the open/reopen event.
-    func performOnLaunchAction() {
+    func performOnLaunchAction(restoresClosedWindows: Bool = true) {
         
-        guard !SessionController.shared.restoreOnLaunchIfNeeded() else { return }
+        guard !SessionController.shared.restoreOnLaunchIfNeeded(),
+              !(restoresClosedWindows && SessionController.shared.restoreClosedWindowsIfNeeded())
+        else { return }
         
         switch UserDefaults.standard[.noDocumentOnLaunchOption] {
             case .untitledDocument:

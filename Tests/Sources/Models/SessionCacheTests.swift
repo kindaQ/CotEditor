@@ -13,6 +13,14 @@ import Testing
 
 struct SessionCacheTests {
     
+    @Test func defaultDirectoryUsesUserDocuments() {
+        
+        let path = SessionCache.defaultDirectoryURL.path
+        #expect(path.hasSuffix("/Documents/cot-editor-cache"))
+        #expect(!path.contains("/Library/Containers/"))
+    }
+    
+    
     @Test func createsCacheDirectoryAndRestoresUnicodeExactly() throws {
         
         try self.withCache { cache in
@@ -134,6 +142,77 @@ struct SessionCacheTests {
             try FileManager.default.createDirectory(at: cache.directoryURL.appending(path: "session.json"), withIntermediateDirectories: false)
             #expect(throws: (any Error).self) { try cache.save(CachedSession()) }
             #expect(try cache.loadDraft(id: id) == "Recoverable text")
+        }
+    }
+    
+    
+    @Test func importsContainerSessionWithoutRemovingOriginals() throws {
+        
+        try self.withCache { cache in
+            let legacy = SessionCache(directoryURL: cache.directoryURL.deletingLastPathComponent().appending(path: "legacy"))
+            let draft = self.draft(title: "Recovered")
+            let session = CachedSession(windows: [.init(tabs: [.init(content: .draft(draft))], selectedTabID: draft.id.uuidString)])
+            try legacy.saveDraft("Recovered 中文🙂", id: draft.id)
+            try legacy.save(session)
+            try cache.importLegacySession(from: legacy.directoryURL)
+            #expect(try cache.load() == session)
+            #expect(try cache.loadDraft(id: draft.id) == "Recovered 中文🙂")
+            #expect(try legacy.loadDraft(id: draft.id) == "Recovered 中文🙂")
+        }
+    }
+    
+    
+    @Test func importsLegacySessionOnlyOnce() throws {
+        
+        try self.withCache { cache in
+            let legacy = SessionCache(directoryURL: cache.directoryURL.deletingLastPathComponent().appending(path: "legacy"))
+            let draft = self.draft(title: "Recovered")
+            try legacy.saveDraft("Recovered", id: draft.id)
+            try legacy.save(CachedSession(windows: [.init(tabs: [.init(content: .draft(draft))], selectedTabID: draft.id.uuidString)]))
+            try cache.importLegacySession(from: legacy.directoryURL)
+            try cache.save(CachedSession())
+            try cache.importLegacySession(from: legacy.directoryURL)
+            #expect(try cache.load() == CachedSession())
+        }
+    }
+    
+    
+    @Test func migrationKeepsCurrentDraftsAndMergesWindows() throws {
+        
+        try self.withCache { cache in
+            let legacy = SessionCache(directoryURL: cache.directoryURL.deletingLastPathComponent().appending(path: "legacy"))
+            let current = self.draft(title: "Current")
+            let imported = self.draft(title: "Imported")
+            try cache.saveDraft("Current text", id: current.id)
+            try cache.save(CachedSession(windows: [.init(tabs: [.init(content: .draft(current))], selectedTabID: current.id.uuidString)]))
+            try legacy.saveDraft("Earlier text", id: current.id)
+            try legacy.saveDraft("Imported text", id: imported.id)
+            try legacy.save(CachedSession(windows: [.init(tabs: [.init(content: .draft(current)), .init(content: .draft(imported))], selectedTabID: imported.id.uuidString)]))
+            try cache.importLegacySession(from: legacy.directoryURL)
+            #expect(try cache.loadDraft(id: current.id) == "Current text")
+            #expect(try cache.loadDraft(id: imported.id) == "Imported text")
+            let loaded = try cache.load()
+            let session = try #require(loaded)
+            #expect(session.windows.flatMap(\.tabs).map(\.id) == [current.id.uuidString, imported.id.uuidString])
+            #expect(session.windows.last?.selectedTabID == imported.id.uuidString)
+        }
+    }
+    
+    
+    @Test func missingLegacyDraftDoesNotCommitMigration() throws {
+        
+        try self.withCache { cache in
+            let legacy = SessionCache(directoryURL: cache.directoryURL.deletingLastPathComponent().appending(path: "legacy"))
+            let draft = self.draft(title: "Recovered")
+            try legacy.save(CachedSession(windows: [.init(tabs: [.init(content: .draft(draft))], selectedTabID: draft.id.uuidString)]))
+            try cache.save(CachedSession())
+            #expect(throws: (any Error).self) { try cache.importLegacySession(from: legacy.directoryURL) }
+            #expect(try cache.load() == CachedSession())
+            try legacy.saveDraft("Recovered", id: draft.id)
+            try cache.importLegacySession(from: legacy.directoryURL)
+            #expect(try cache.loadDraft(id: draft.id) == "Recovered")
+            let session = try cache.load()
+            #expect(session?.windows.count == 1)
         }
     }
     

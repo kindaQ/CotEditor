@@ -10,7 +10,8 @@ import AppKit
 /// Owns local document sessions, including windows closed while the application remains running.
 @MainActor final class SessionController {
     
-    static let shared = SessionController(cache: SessionCache(directoryURL: SessionCache.defaultDirectoryURL))
+    static let shared = SessionController(cache: SessionCache(directoryURL: SessionCache.defaultDirectoryURL),
+                                          legacyDirectoryURL: SessionCache.legacyDirectoryURL)
     
     let cache: SessionCache
     private(set) var isClosing = false
@@ -18,11 +19,13 @@ import AppKit
     private var hasAttemptedRestoration = false
     private var retainedWindows: [CachedSession.Window] = []
     private var securityScopedURLs: [URL] = []
+    private let legacyDirectoryURL: URL?
     
     
-    init(cache: SessionCache) {
+    init(cache: SessionCache, legacyDirectoryURL: URL? = nil) {
         
         self.cache = cache
+        self.legacyDirectoryURL = legacyDirectoryURL
     }
     
     
@@ -33,6 +36,9 @@ import AppKit
         self.hasAttemptedRestoration = true
         
         do {
+            if let legacyDirectoryURL = self.legacyDirectoryURL {
+                try self.cache.importLegacySession(from: legacyDirectoryURL)
+            }
             guard let session = try self.cache.load(), !session.windows.isEmpty else { return false }
             self.isRestoring = true
             Task { await self.restore(session) }
@@ -41,6 +47,19 @@ import AppKit
             NSApp.presentError(error)
             return false
         }
+    }
+    
+    
+    /// Restores windows closed earlier in this process when the application is opened again.
+    @discardableResult func restoreClosedWindowsIfNeeded() -> Bool {
+        
+        guard !self.isRestoring, !self.isClosing else { return true }
+        guard !self.retainedWindows.isEmpty else { return false }
+        let session = CachedSession(windows: self.retainedWindows)
+        self.retainedWindows.removeAll()
+        self.isRestoring = true
+        Task { await self.restore(session) }
+        return true
     }
     
     
@@ -242,7 +261,7 @@ import AppKit
             NSApp.presentError(error)
         }
         if controller.documents.isEmpty {
-            controller.performOnLaunchAction()
+            controller.performOnLaunchAction(restoresClosedWindows: false)
         }
     }
 }

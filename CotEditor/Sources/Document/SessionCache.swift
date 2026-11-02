@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Darwin
 
 /// The ordered windows and tabs to reopen, with draft contents stored separately as UTF-8 text.
 struct CachedSession: Codable, Equatable {
@@ -55,9 +56,32 @@ struct SessionCache {
     
     static var defaultDirectoryURL: URL {
         
-        // Naming the user explicitly obtains the real home directory in a sandboxed application.
-        let home = FileManager.default.homeDirectory(forUser: NSUserName()) ?? FileManager.default.homeDirectoryForCurrentUser
+        #if DEBUG
+        if let path = ProcessInfo.processInfo.environment["COTEDITOR_SESSION_CACHE_DIRECTORY"] {
+            return URL(filePath: path, directoryHint: .isDirectory)
+        }
+        #endif
+        
+        // Foundation home-directory APIs return the application container under App Sandbox.
+        var entry = passwd()
+        var result: UnsafeMutablePointer<passwd>?
+        var buffer = [CChar](repeating: 0, count: 16_384)
+        let home: URL = buffer.withUnsafeMutableBufferPointer { buffer in
+            guard getpwuid_r(getuid(), &entry, buffer.baseAddress, buffer.count, &result) == 0,
+                  result != nil, let directory = entry.pw_dir
+            else { return FileManager.default.homeDirectoryForCurrentUser }
+            return URL(filePath: String(cString: directory), directoryHint: .isDirectory)
+        }
         return home.appending(path: "Documents/cot-editor-cache", directoryHint: .isDirectory)
+    }
+    
+    static var legacyDirectoryURL: URL? {
+        
+        #if DEBUG
+        guard ProcessInfo.processInfo.environment["COTEDITOR_SESSION_CACHE_DIRECTORY"] == nil else { return nil }
+        #endif
+        
+        return FileManager.default.homeDirectoryForCurrentUser.appending(path: "Documents/cot-editor-cache", directoryHint: .isDirectory)
     }
     
     private var manifestURL: URL { self.directoryURL.appending(path: "session.json") }
@@ -98,6 +122,41 @@ struct SessionCache {
         } catch CocoaError.fileReadNoSuchFile {
             return nil
         }
+    }
+    
+    
+    /// Imports the previous container-based session once, preserving both copies of every draft.
+    func importLegacySession(from directoryURL: URL) throws {
+        
+        let markerURL = self.directoryURL.appending(path: ".legacy-session-imported")
+        guard directoryURL.standardizedFileURL != self.directoryURL.standardizedFileURL,
+              !FileManager.default.fileExists(atPath: markerURL.path)
+        else { return }
+        
+        let legacy = SessionCache(directoryURL: directoryURL)
+        guard let previous = try legacy.load() else { return }
+        var session = try self.load() ?? CachedSession()
+        var identifiers = Set(session.windows.flatMap(\.tabs).map(\.id))
+        
+        for window in previous.windows {
+            var tabs: [CachedSession.Tab] = []
+            for tab in window.tabs where identifiers.insert(tab.id).inserted {
+                if case .draft(let draft) = tab.content {
+                    let destination = self.draftURL(for: draft.id)
+                    if !FileManager.default.fileExists(atPath: destination.path) {
+                        try self.prepareDirectory()
+                        try FileManager.default.copyItem(at: legacy.draftURL(for: draft.id), to: destination)
+                    }
+                }
+                tabs.append(tab)
+            }
+            if !tabs.isEmpty {
+                let selectedID = tabs.contains(where: { $0.id == window.selectedTabID }) ? window.selectedTabID : tabs.first?.id
+                session.windows.append(CachedSession.Window(tabs: tabs, selectedTabID: selectedID))
+            }
+        }
+        try self.save(session)
+        try Data().write(to: markerURL, options: .atomic)
     }
     
     

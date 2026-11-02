@@ -24,6 +24,7 @@
 //
 
 import XCTest
+import AppKit
 
 @MainActor final class UITests: XCTestCase {
     
@@ -92,6 +93,94 @@ import XCTest
         app.buttons["Snippets"].firstMatch.click()
         app.buttons["Shortcuts"].firstMatch.click()
         app.buttons["Donation"].firstMatch.click()
+    }
+    
+    
+    func testRestoresDraftTabsWhenReopened() async throws {
+        
+        let (app, cacheDirectory) = try self.launchSessionTestApp()
+        defer {
+            app.terminate()
+            try? FileManager.default.removeItem(at: cacheDirectory)
+        }
+        let firstText = "Session cache first draft 20261102"
+        let secondText = "Session cache second draft 20261102"
+        self.enterDraftTabs(app, firstText: firstText, secondText: secondText)
+        let bundleURL = try XCTUnwrap(NSRunningApplication.runningApplications(withBundleIdentifier: "com.coteditor.CotEditor").first?.bundleURL)
+        
+        for _ in 0..<2 {
+            self.closeSessionWindow(app)
+            XCTAssertNotEqual(app.state, .notRunning)
+            _ = try await NSWorkspace.shared.openApplication(at: bundleURL, configuration: NSWorkspace.OpenConfiguration())
+            self.assertRestoredDraftTabs(app, firstText: firstText, secondText: secondText)
+            app.windows.firstMatch.tabs.element(boundBy: 1).click()
+        }
+    }
+    
+    
+    func testRestoresDraftTabsAfterProcessRelaunch() throws {
+        
+        let (app, cacheDirectory) = try self.launchSessionTestApp()
+        defer {
+            app.terminate()
+            try? FileManager.default.removeItem(at: cacheDirectory)
+        }
+        let firstText = "Process relaunch first draft 20261102"
+        let secondText = "Process relaunch second draft 20261102"
+        self.enterDraftTabs(app, firstText: firstText, secondText: secondText)
+        self.closeSessionWindow(app)
+        app.terminate()
+        app.launch()
+        self.assertRestoredDraftTabs(app, firstText: firstText, secondText: secondText)
+    }
+    
+    
+    private func launchSessionTestApp() throws -> (XCUIApplication, URL) {
+        
+        let cacheDirectory = FileManager.default.homeDirectoryForCurrentUser
+            .appending(path: "Library/Containers/com.coteditor.CotEditor/Data/tmp/SessionUITests-" + UUID().uuidString)
+        let app = XCUIApplication()
+        app.launchEnvironment["COTEDITOR_SESSION_CACHE_DIRECTORY"] = cacheDirectory.path
+        app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.textViews["EditorTextView"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.windows.firstMatch.tabGroups.firstMatch.exists)
+        return (app, cacheDirectory)
+    }
+    
+    
+    private func enterDraftTabs(_ app: XCUIApplication, firstText: String, secondText: String) {
+        
+        let firstEditor = app.windows.firstMatch.textViews["EditorTextView"]
+        firstEditor.click()
+        firstEditor.typeText(firstText)
+        app.menuBars.menuBarItems["File"].click()
+        app.menuBars.menuItems["New Tab"].click()
+        let secondEditor = app.windows.firstMatch.textViews["EditorTextView"]
+        XCTAssertTrue(secondEditor.waitForExistence(timeout: 10))
+        secondEditor.click()
+        secondEditor.typeText(secondText)
+        XCTAssertEqual(app.windows.firstMatch.tabs.count, 2)
+    }
+    
+    
+    private func closeSessionWindow(_ app: XCUIApplication) {
+        
+        app.windows.firstMatch.buttons[XCUIIdentifierCloseWindow].click()
+        let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "count == 0"), object: app.windows)
+        XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 10), .completed)
+    }
+    
+    
+    private func assertRestoredDraftTabs(_ app: XCUIApplication, firstText: String, secondText: String) {
+        
+        let editor = app.windows.firstMatch.textViews["EditorTextView"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 15))
+        let restored = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", secondText), object: editor)
+        XCTAssertEqual(XCTWaiter.wait(for: [restored], timeout: 15), .completed)
+        XCTAssertEqual(app.windows.firstMatch.tabs.count, 2)
+        app.windows.firstMatch.tabs.element(boundBy: 0).click()
+        XCTAssertEqual(app.windows.firstMatch.textViews["EditorTextView"].value as? String, firstText)
     }
     
     

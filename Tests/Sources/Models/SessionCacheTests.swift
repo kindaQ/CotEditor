@@ -12,6 +12,46 @@ import Testing
 #endif
 
 struct SessionCacheTests {
+
+    @Test func mergesCachedWindowsIntoOrderedTabs() {
+
+        let first = CachedSession.Tab(content: .draft(self.draft(title: "First")))
+        let second = CachedSession.Tab(content: .draft(self.draft(title: "Second")))
+        let third = CachedSession.Tab(content: .draft(self.draft(title: "Third")))
+        let session = CachedSession(windows: [
+            .init(tabs: [first, second], selectedTabID: second.id),
+            .init(tabs: [third], selectedTabID: third.id),
+        ])
+
+        #expect(session.mergingWindows() == CachedSession(windows: [
+            .init(tabs: [first, second, third], selectedTabID: second.id),
+        ]))
+    }
+
+
+    @Test func mergingWindowsOpensDuplicateDocumentsOnce() {
+
+        let draft = CachedSession.Tab(content: .draft(self.draft(title: "Draft")))
+        let file = CachedSession.Tab(content: .file(url: URL(filePath: "/tmp/example.txt"), bookmark: nil))
+        let session = CachedSession(windows: [
+            .init(tabs: [draft, file], selectedTabID: draft.id),
+            .init(tabs: [file, draft], selectedTabID: file.id),
+        ])
+
+        #expect(session.mergingWindows().windows.first?.tabs == [draft, file])
+    }
+
+
+    @Test func mergingWindowsHandlesEmptyGroupsAndMissingSelection() {
+
+        let draft = CachedSession.Tab(content: .draft(self.draft(title: "Draft")))
+        #expect(CachedSession(windows: [.init(tabs: [], selectedTabID: nil)]).mergingWindows() == CachedSession())
+        let session = CachedSession(windows: [
+            .init(tabs: [], selectedTabID: "missing"),
+            .init(tabs: [draft], selectedTabID: nil),
+        ])
+        #expect(session.mergingWindows().windows.first?.selectedTabID == draft.id)
+    }
     
     @Test func defaultDirectoryUsesUserDocuments() {
         

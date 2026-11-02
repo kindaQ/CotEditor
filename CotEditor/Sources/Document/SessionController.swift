@@ -196,7 +196,7 @@ import AppKit
         var errors: [any Error] = []
         var frontWindow: NSWindow?
         
-        for group in session.windows {
+        for group in session.mergingWindows().windows {
             var restoredWindows: [(String, NSWindow)] = []
             var failedTabs: [CachedSession.Tab] = []
             
@@ -233,7 +233,7 @@ import AppKit
                             }
                     }
                     
-                    // Keep each saved window separate regardless of the user's current tabbing preference.
+                    // Assemble the restored tabs explicitly in their cached order.
                     DocumentWindow.tabbingPreference = .manual
                     document.makeWindowControllers()
                     document.showWindows()

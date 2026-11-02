@@ -134,14 +134,70 @@ import Darwin
         app.launch()
         self.assertRestoredDraftTabs(app, firstText: firstText, secondText: secondText)
     }
+
+
+    func testRestoresSeparateWindowsAsOneTabGroup() async throws {
+
+        let texts = ["Legacy window draft A", "Existing file in merged tabs", "Legacy window draft B", "Legacy window draft C"]
+        let (app, cacheDirectory) = try self.launchSessionTestApp { directory in
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let fileURL = directory.appending(path: "existing.txt")
+            try texts[1].write(to: fileURL, atomically: true, encoding: .utf8)
+            func draft(_ text: String, title: String) throws -> [String: Any] {
+                let id = UUID().uuidString
+                try text.write(to: directory.appending(path: id + ".txt"), atomically: true, encoding: .utf8)
+                let metadata: [String: Any] = [
+                    "id": id, "title": title, "encoding": String.Encoding.utf8.rawValue,
+                    "withUTF8BOM": false, "lineEnding": "\n", "syntaxName": "Plain Text", "isVerticalText": false,
+                ]
+                return ["content": ["draft": ["_0": metadata]]]
+            }
+            let first = try draft(texts[0], title: "Legacy A")
+            let second = try draft(texts[2], title: "Legacy B")
+            let third = try draft(texts[3], title: "Legacy C")
+            let file: [String: Any] = ["content": ["file": ["url": fileURL.absoluteString]]]
+            let manifest: [String: Any] = ["windows": [
+                ["tabs": [first, file]], ["tabs": [second]], ["tabs": [file, third]],
+            ]]
+            try JSONSerialization.data(withJSONObject: manifest).write(to: directory.appending(path: "session.json"))
+        }
+        defer {
+            app.terminate()
+            try? FileManager.default.removeItem(at: cacheDirectory)
+        }
+
+        self.assertMergedTabs(app, texts: texts)
+        let bundleURL = try XCTUnwrap(NSRunningApplication.runningApplications(withBundleIdentifier: "com.coteditor.CotEditor").first?.bundleURL)
+        self.closeSessionWindow(app)
+        _ = try await NSWorkspace.shared.openApplication(at: bundleURL, configuration: NSWorkspace.OpenConfiguration())
+        self.assertMergedTabs(app, texts: texts)
+        self.closeSessionWindow(app)
+        app.terminate()
+        app.launch()
+        self.assertMergedTabs(app, texts: texts)
+    }
+
+
+    private func assertMergedTabs(_ app: XCUIApplication, texts: [String]) {
+
+        let tabs = app.windows.firstMatch.tabs
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "count == %d", texts.count), object: tabs)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 15), .completed)
+        XCTAssertEqual(app.windows.count, 1)
+        for (index, text) in texts.enumerated() {
+            tabs.element(boundBy: index).click()
+            XCTAssertEqual(app.windows.firstMatch.textViews["EditorTextView"].value as? String, text)
+        }
+    }
     
     
-    private func launchSessionTestApp() throws -> (XCUIApplication, URL) {
+    private func launchSessionTestApp(prepareCache: ((URL) throws -> Void)? = nil) throws -> (XCUIApplication, URL) {
         
         let account = try XCTUnwrap(getpwuid(getuid()))
         let home = URL(filePath: String(cString: account.pointee.pw_dir))
         let cacheDirectory = home
             .appending(path: "Library/Containers/com.coteditor.CotEditor/Data/tmp/SessionUITests-" + UUID().uuidString)
+        try prepareCache?(cacheDirectory)
         let app = XCUIApplication()
         app.launchEnvironment["COTEDITOR_SESSION_CACHE_DIRECTORY"] = cacheDirectory.path
         app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]

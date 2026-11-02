@@ -46,6 +46,18 @@ struct CachedSession: Codable, Equatable {
     }
     
     var windows: [Window] = []
+
+
+    /// Reopens every cached local document in one tab group, preserving tab order and selection.
+    func mergingWindows() -> Self {
+
+        var identifiers: Set<String> = []
+        let tabs = self.windows.flatMap(\.tabs).filter { identifiers.insert($0.id).inserted }
+        guard let first = tabs.first else { return Self() }
+        let selectedID = self.windows.lazy.compactMap(\.selectedTabID)
+            .first(where: identifiers.contains) ?? first.id
+        return Self(windows: [Window(tabs: tabs, selectedTabID: selectedID)])
+    }
 }
 
 

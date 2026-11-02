@@ -56,6 +56,11 @@ jobs:
         swift --version
     - name: Checkout
       uses: actions/checkout@v7
+    - name: Cache app dependencies
+      uses: actions/cache@v6
+      with:
+        path: ${{ runner.temp }}/CotEditorBuild/SourcePackages
+        key: ${{ runner.os }}-${{ runner.arch }}-xcode-${{ env.XCODE_VERSION }}-app-dependencies-${{ hashFiles('CotEditor.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
     - name: Unit Test for CotEditor
       run: |
         xcodebuild test -scheme CotEditor -derivedDataPath "$RUNNER_TEMP/CotEditorBuild" CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= CODE_SIGN_ENTITLEMENTS_SUFFIX=-AdHoc -skipPackagePluginValidation
@@ -64,6 +69,7 @@ jobs:
         xcodebuild test -scheme CotEditor -derivedDataPath "$RUNNER_TEMP/CotEditorBuild" -testPlan "UI Tests" \
           -only-testing:"UI Tests/UITests/testRestoresDraftTabsWhenReopened" \
           -only-testing:"UI Tests/UITests/testRestoresDraftTabsAfterProcessRelaunch" \
+          -only-testing:"UI Tests/UITests/testRestoresSeparateWindowsAsOneTabGroup" \
           -resultBundlePath "$RUNNER_TEMP/SessionCacheUITests.xcresult" \
           CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= \
           CODE_SIGN_ENTITLEMENTS_SUFFIX=-AdHoc -skipPackagePluginValidation

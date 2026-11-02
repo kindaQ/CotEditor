@@ -95,7 +95,7 @@ jobs:
         set -euo pipefail
         app_binary="/tmp/CotEditorInstall/Applications/CotEditor.app/Contents/MacOS/CotEditor"
         rm -rf /tmp/CotEditorInstall
-        xcodebuild install -scheme CotEditor -configuration Release DSTROOT=/tmp/CotEditorInstall CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= CODE_SIGN_ENTITLEMENTS_SUFFIX=-AdHoc -skipPackagePluginValidation
+        xcodebuild install -scheme CotEditor -derivedDataPath "$RUNNER_TEMP/CotEditorBuild" -configuration Release DSTROOT=/tmp/CotEditorInstall CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= CODE_SIGN_ENTITLEMENTS_SUFFIX=-AdHoc -skipPackagePluginValidation
         "${app_binary}" >/dev/null 2>&1 &
         app_pid=$!
         sleep 5

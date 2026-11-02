@@ -104,6 +104,22 @@ final class DocumentWindow: NSWindow {
     
     // MARK: Actions
 
+    /// Applies the saved choice when a single document can display either state.
+    func applyTabBarPreference() {
+
+        guard (self.tabGroup?.windows.count ?? 1) == 1,
+              (self.tabGroup?.isTabBarVisible ?? false) != UserDefaults.standard[.showTabBar]
+        else { return }
+        super.toggleTabBar(nil)
+    }
+
+
+    override func toggleTabBar(_ sender: Any?) {
+
+        super.toggleTabBar(sender)
+        UserDefaults.standard[.showTabBar] = self.tabGroup?.isTabBarVisible ?? false
+    }
+
     override func performClose(_ sender: Any?) {
 
         guard let controller = self.windowController,
@@ -114,8 +130,7 @@ final class DocumentWindow: NSWindow {
             return
         }
 
-        // Close-tab commands must validate this document directly. AppKit's default
-        // implementation invokes the standard window button, whose action caches the tab group.
+        // The title-bar button has a separate action for preserving the whole tab group.
         Task {
             guard await document.canClose(windowController: controller) else { return }
             document.close()

@@ -177,6 +177,63 @@ import Darwin
             XCTAssertEqual(app.windows.firstMatch.textViews["EditorTextView"].value as? String, text)
         }
     }
+
+
+    func testTabBarDefaultsToVisibleAndRemembersManualChoice() throws {
+
+        let (app, cacheDirectory) = try self.launchSessionTestApp()
+        defer {
+            if app.state != .notRunning, app.windows.firstMatch.exists,
+               !app.windows.firstMatch.tabGroups.firstMatch.exists
+            {
+                app.menuBars.menuBarItems["View"].click()
+                app.menuBars.menuItems["Show Tab Bar"].click()
+            }
+            app.terminate()
+            try? FileManager.default.removeItem(at: cacheDirectory)
+        }
+
+        app.menuBars.menuBarItems["View"].click()
+        let hide = app.menuBars.menuItems["Hide Tab Bar"]
+        XCTAssertTrue(hide.isEnabled)
+        hide.click()
+        let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "count == 0"), object: app.windows.firstMatch.tabGroups)
+        XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 10), .completed)
+
+        self.closeSessionWindow(app)
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.textViews["EditorTextView"].waitForExistence(timeout: 15))
+        XCTAssertFalse(app.windows.firstMatch.tabGroups.firstMatch.exists)
+
+        app.menuBars.menuBarItems["File"].click()
+        app.menuBars.menuItems["New Tab"].click()
+        XCTAssertEqual(app.windows.firstMatch.tabs.count, 2)
+        self.closeSessionWindow(app)
+        app.terminate()
+        app.launch()
+        let restored = XCTNSPredicateExpectation(predicate: NSPredicate(format: "count == 2"), object: app.windows.firstMatch.tabs)
+        XCTAssertEqual(XCTWaiter.wait(for: [restored], timeout: 15), .completed)
+        XCTAssertEqual(app.windows.count, 1)
+        app.menuBars.menuBarItems["View"].click()
+        print("Native Hide Tab Bar enabled with multiple tabs: \(app.menuBars.menuItems["Hide Tab Bar"].isEnabled)")
+        app.typeKey(.escape, modifierFlags: [])
+
+        app.windows.firstMatch.tabs.element(boundBy: 1).buttons.firstMatch.click()
+        let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "count <= 1"), object: app.windows.firstMatch.tabs)
+        XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 10), .completed)
+        app.menuBars.menuBarItems["View"].click()
+        let hideAgain = app.menuBars.menuItems["Hide Tab Bar"]
+        if hideAgain.exists {
+            XCTAssertTrue(hideAgain.isEnabled)
+            hideAgain.click()
+            app.menuBars.menuBarItems["View"].click()
+        }
+        let show = app.menuBars.menuItems["Show Tab Bar"]
+        XCTAssertTrue(show.isEnabled)
+        show.click()
+        XCTAssertTrue(app.windows.firstMatch.tabGroups.firstMatch.waitForExistence(timeout: 10))
+    }
     
     
     private func launchSessionTestApp(cacheDirectoryName: String = "SessionUITests-" + UUID().uuidString) throws -> (XCUIApplication, URL) {

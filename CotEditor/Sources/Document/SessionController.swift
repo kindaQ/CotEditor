@@ -239,8 +239,8 @@ import AppKit
                     document.showWindows()
                     DocumentWindow.tabbingPreference = nil
                     if let window = document.windowControllers.first?.window {
-                        if let first = restoredWindows.first?.1, first !== window {
-                            first.tabGroup?.insertWindow(window, at: restoredWindows.count)
+                        if let previous = restoredWindows.last?.1, previous !== window {
+                            previous.addTabbedWindow(window, ordered: .above)
                         }
                         restoredWindows.append((tab.id, window))
                     }

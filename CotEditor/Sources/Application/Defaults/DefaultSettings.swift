@@ -63,6 +63,7 @@ struct DefaultSettings {
             
             // Window
             .windowTabbing: NSWindow.UserTabbingPreference.always.rawValue,
+            .showTabBar: true,
             .showLineNumbers: true,
             .showInvisibles: false,
             .showInvisibleNewLine: true,

@@ -57,6 +57,7 @@ extension DefaultKeys {
     
     // Window
     static let windowTabbing = DefaultKey<Int>("windowTabbing")
+    static let showTabBar = DefaultKey<Bool>("showTabBar")
     static let windowWidth = DefaultKey<Double?>("windowWidth")
     static let windowHeight = DefaultKey<Double?>("windowHeight")
     static let showLineNumbers = DefaultKey<Bool>("showLineNumbers")

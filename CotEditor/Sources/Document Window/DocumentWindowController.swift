@@ -195,8 +195,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate {
         
         super.showWindow(sender)
         
-        if let window, !self.isDirectoryDocument, window.tabGroup?.isTabBarVisible == false {
-            window.toggleTabBar(sender)
+        if !self.isDirectoryDocument {
+            (self.window as? DocumentWindow)?.applyTabBarPreference()
         }
         self.configureSessionClosing()
     }

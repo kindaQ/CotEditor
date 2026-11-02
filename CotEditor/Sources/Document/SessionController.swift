@@ -84,6 +84,7 @@ import AppKit
         
         let documents = (window.tabGroup?.windows ?? [window])
             .compactMap { $0.windowController?.document as? NSDocument }
+        SessionCache.recordTestEvent("close window; documents=\(documents.count)")
         _ = await self.close(documents)
     }
     
@@ -91,12 +92,14 @@ import AppKit
     /// Validates all documents before closing any of them, so cancellation leaves the tabs open.
     func close(_ documents: [NSDocument]) async -> Bool {
         
+        SessionCache.recordTestEvent("close session; closing=\(self.isClosing); restoring=\(self.isRestoring)")
         guard !self.isClosing, !self.isRestoring else { return false }
         self.isClosing = true
         defer { self.isClosing = false }
         
         do {
             try self.persistCurrentSession()
+            SessionCache.recordTestEvent("session persisted")
             
             for document in documents {
                 let canClose: Bool
@@ -105,6 +108,7 @@ import AppKit
                 } else {
                     canClose = await document.canClose()
                 }
+                SessionCache.recordTestEvent("document approved=\(canClose)")
                 guard canClose else { return false }
             }
             
@@ -120,8 +124,10 @@ import AppKit
             for document in documents {
                 document.close()
             }
+            SessionCache.recordTestEvent("documents closed")
             return true
         } catch {
+            SessionCache.recordTestEvent("close failed: \(error)")
             NSApp.presentError(error)
             return false
         }

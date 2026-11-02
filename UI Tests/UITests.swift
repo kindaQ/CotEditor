@@ -25,6 +25,7 @@
 
 import XCTest
 import AppKit
+import Darwin
 
 @MainActor final class UITests: XCTestCase {
     
@@ -137,7 +138,9 @@ import AppKit
     
     private func launchSessionTestApp() throws -> (XCUIApplication, URL) {
         
-        let cacheDirectory = FileManager.default.homeDirectoryForCurrentUser
+        let account = try XCTUnwrap(getpwuid(getuid()))
+        let home = URL(filePath: String(cString: account.pointee.pw_dir))
+        let cacheDirectory = home
             .appending(path: "Library/Containers/com.coteditor.CotEditor/Data/tmp/SessionUITests-" + UUID().uuidString)
         let app = XCUIApplication()
         app.launchEnvironment["COTEDITOR_SESSION_CACHE_DIRECTORY"] = cacheDirectory.path
@@ -168,7 +171,15 @@ import AppKit
         
         app.windows.firstMatch.buttons[XCUIIdentifierCloseWindow].click()
         let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "count == 0"), object: app.windows)
-        XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 10), .completed)
+        let result = XCTWaiter.wait(for: [closed], timeout: 10)
+        if result != .completed {
+            print(app.debugDescription)
+            if let path = app.launchEnvironment["COTEDITOR_SESSION_CACHE_DIRECTORY"] {
+                print("Session test cache: \(path)")
+                print((try? String(contentsOfFile: path + "/test-events.txt", encoding: .utf8)) ?? "No session events recorded")
+            }
+        }
+        XCTAssertEqual(result, .completed)
     }
     
     

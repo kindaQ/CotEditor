@@ -198,12 +198,14 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate {
         if let window, !self.isDirectoryDocument, window.tabGroup?.isTabBarVisible == false {
             window.toggleTabBar(sender)
         }
+        self.configureSessionClosing()
     }
     
     
     @objc private func closeWindowPreservingTabs(_ sender: Any?) {
         
         guard let window = self.window else { return }
+        SessionCache.recordTestEvent("close button received; tabs=\(window.tabGroup?.windows.count ?? 1)")
         Task { await SessionController.shared.closeWindow(window) }
     }
     
@@ -333,6 +335,18 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate {
     
     
     // MARK: Private Methods
+
+    /// AppKit rebuilds title-bar controls when installing the toolbar and tab bar.
+    private func configureSessionClosing() {
+
+        guard !self.isDirectoryDocument, let window else { return }
+        let cachesSession = (self.fileDocument as? TextDocument)?.usesSessionCache == true
+        window.isRestorable = !cachesSession
+        let button = window.standardWindowButton(.closeButton)
+        button?.target = cachesSession ? self : window
+        button?.action = cachesSession ? #selector(closeWindowPreservingTabs(_:)) : #selector(NSWindow.performClose(_:))
+        SessionCache.recordTestEvent("close button configured; cached=\(cachesSession); button=\(button != nil)")
+    }
     
     /// Returns the user-defined frame size for the given window, if set.
     ///
@@ -360,13 +374,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate {
     /// - Parameter document: The new document.
     private func updateDocument(_ document: DataDocument?) {
         
-        if !self.isDirectoryDocument, let window {
-            let cachesSession = (document as? TextDocument)?.usesSessionCache == true
-            // Local tabs are restored independently of macOS Resume settings.
-            window.isRestorable = !cachesSession
-            window.standardWindowButton(.closeButton)?.target = cachesSession ? self : window
-            window.standardWindowButton(.closeButton)?.action = cachesSession ? #selector(closeWindowPreservingTabs(_:)) : #selector(NSWindow.performClose(_:))
-        }
+        self.configureSessionClosing()
         
         if let viewController = self.contentViewController as? WindowContentViewController, viewController.document != document {
             viewController.document = document

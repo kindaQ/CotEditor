@@ -85,6 +85,23 @@ struct SessionCache {
     }
     
     private var manifestURL: URL { self.directoryURL.appending(path: "session.json") }
+
+    /// Records control flow only for an explicitly isolated debug UI test.
+    static func recordTestEvent(_ message: String) {
+
+        #if DEBUG
+        guard let path = ProcessInfo.processInfo.environment["COTEDITOR_SESSION_CACHE_DIRECTORY"] else { return }
+        let url = URL(filePath: path).appending(path: "test-events.txt")
+        do {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            var data = (try? Data(contentsOf: url)) ?? Data()
+            data.append(contentsOf: (message + "\n").utf8)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            print("Session UI test event could not be written: \(error)")
+        }
+        #endif
+    }
     
     
     func draftURL(for id: UUID) -> URL {

@@ -74,6 +74,20 @@ struct SessionCache {
         }
         #endif
         
+        return self.userHomeDirectoryURL.appending(path: "Documents/CotEditor/cache", directoryHint: .isDirectory)
+    }
+
+    static var previousDirectoryURL: URL? {
+
+        #if DEBUG
+        guard ProcessInfo.processInfo.environment["COTEDITOR_SESSION_CACHE_DIRECTORY"] == nil else { return nil }
+        #endif
+
+        return self.userHomeDirectoryURL.appending(path: "Documents/cot-editor-cache", directoryHint: .isDirectory)
+    }
+
+    private static var userHomeDirectoryURL: URL {
+
         // Foundation home-directory APIs return the application container under App Sandbox.
         var entry = passwd()
         var result: UnsafeMutablePointer<passwd>?
@@ -84,7 +98,7 @@ struct SessionCache {
             else { return FileManager.default.homeDirectoryForCurrentUser }
             return URL(filePath: String(cString: directory), directoryHint: .isDirectory)
         }
-        return home.appending(path: "Documents/cot-editor-cache", directoryHint: .isDirectory)
+        return home
     }
     
     static var legacyDirectoryURL: URL? {
@@ -154,10 +168,39 @@ struct SessionCache {
     }
     
     
+    /// Copies the previous Documents cache, including text backups of explicitly closed tabs.
+    func importPreviousSession(from directoryURL: URL) throws {
+
+        let markerName = ".previous-session-imported"
+        guard directoryURL.standardizedFileURL != self.directoryURL.standardizedFileURL,
+              !FileManager.default.fileExists(atPath: self.directoryURL.appending(path: markerName).path),
+              try SessionCache(directoryURL: directoryURL).load() != nil
+        else { return }
+
+        try self.prepareDirectory()
+        for source in try FileManager.default.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil) {
+            let isDraft = source.pathExtension == "txt" && UUID(uuidString: source.deletingPathExtension().lastPathComponent) != nil
+            // Preserve the container-import marker so older, closed tabs stay closed.
+            guard isDraft || source.lastPathComponent == ".legacy-session-imported" else { continue }
+            let destination = self.directoryURL.appending(path: source.lastPathComponent)
+            if !FileManager.default.fileExists(atPath: destination.path) {
+                try FileManager.default.copyItem(at: source, to: destination)
+            }
+        }
+        try self.importSession(from: directoryURL, markerName: markerName)
+    }
+
+
     /// Imports the previous container-based session once, preserving both copies of every draft.
     func importLegacySession(from directoryURL: URL) throws {
-        
-        let markerURL = self.directoryURL.appending(path: ".legacy-session-imported")
+
+        try self.importSession(from: directoryURL, markerName: ".legacy-session-imported")
+    }
+
+
+    private func importSession(from directoryURL: URL, markerName: String) throws {
+
+        let markerURL = self.directoryURL.appending(path: markerName)
         guard directoryURL.standardizedFileURL != self.directoryURL.standardizedFileURL,
               !FileManager.default.fileExists(atPath: markerURL.path)
         else { return }

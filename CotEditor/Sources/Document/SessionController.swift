@@ -11,6 +11,7 @@ import AppKit
 @MainActor final class SessionController {
     
     static let shared = SessionController(cache: SessionCache(directoryURL: SessionCache.defaultDirectoryURL),
+                                          previousDirectoryURL: SessionCache.previousDirectoryURL,
                                           legacyDirectoryURL: SessionCache.legacyDirectoryURL)
     
     let cache: SessionCache
@@ -19,12 +20,14 @@ import AppKit
     private var hasAttemptedRestoration = false
     private var retainedWindows: [CachedSession.Window] = []
     private var securityScopedURLs: [URL] = []
+    private let previousDirectoryURL: URL?
     private let legacyDirectoryURL: URL?
     
     
-    init(cache: SessionCache, legacyDirectoryURL: URL? = nil) {
+    init(cache: SessionCache, previousDirectoryURL: URL? = nil, legacyDirectoryURL: URL? = nil) {
         
         self.cache = cache
+        self.previousDirectoryURL = previousDirectoryURL
         self.legacyDirectoryURL = legacyDirectoryURL
     }
     
@@ -36,6 +39,9 @@ import AppKit
         self.hasAttemptedRestoration = true
         
         do {
+            if let previousDirectoryURL = self.previousDirectoryURL {
+                try self.cache.importPreviousSession(from: previousDirectoryURL)
+            }
             if let legacyDirectoryURL = self.legacyDirectoryURL {
                 try self.cache.importLegacySession(from: legacyDirectoryURL)
             }

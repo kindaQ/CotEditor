@@ -56,7 +56,7 @@ struct SessionCacheTests {
     @Test func defaultDirectoryUsesUserDocuments() {
         
         let path = SessionCache.defaultDirectoryURL.path
-        #expect(path.hasSuffix("/Documents/cot-editor-cache"))
+        #expect(path.hasSuffix("/Documents/CotEditor/cache"))
         #expect(!path.contains("/Library/Containers/"))
     }
     
@@ -257,6 +257,87 @@ struct SessionCacheTests {
     }
     
     
+    @Test func previousDocumentsCachePreservesClosedTabBackupsAndImportHistory() throws {
+
+        try self.withCache { cache in
+            let previous = SessionCache(directoryURL: cache.directoryURL.deletingLastPathComponent().appending(path: "previous"))
+            let container = SessionCache(directoryURL: cache.directoryURL.deletingLastPathComponent().appending(path: "container"))
+            let active = self.draft(title: "Active")
+            let closed = self.draft(title: "Closed")
+            let session = CachedSession(windows: [.init(tabs: [.init(content: .draft(active))], selectedTabID: active.id.uuidString)])
+            try previous.saveDraft("Active 中文🙂", id: active.id)
+            try previous.saveDraft("Closed backup", id: closed.id)
+            try previous.save(session)
+            try Data().write(to: previous.directoryURL.appending(path: ".legacy-session-imported"))
+            try container.saveDraft("Older closed tab", id: closed.id)
+            try container.save(CachedSession(windows: [.init(tabs: [.init(content: .draft(closed))], selectedTabID: closed.id.uuidString)]))
+
+            try cache.importPreviousSession(from: previous.directoryURL)
+            try cache.importLegacySession(from: container.directoryURL)
+            #expect(try cache.load() == session)
+            #expect(try cache.loadDraft(id: active.id) == "Active 中文🙂")
+            #expect(try cache.loadDraft(id: closed.id) == "Closed backup")
+            #expect(try previous.load() == session)
+            #expect(try previous.loadDraft(id: active.id) == "Active 中文🙂")
+            #expect(try previous.loadDraft(id: closed.id) == "Closed backup")
+
+            try cache.save(CachedSession())
+            try cache.importPreviousSession(from: previous.directoryURL)
+            #expect(try cache.load() == CachedSession())
+        }
+    }
+
+
+    @Test func previousDocumentsMigrationPreservesNewerDestinationDrafts() throws {
+
+        try self.withCache { cache in
+            let previous = SessionCache(directoryURL: cache.directoryURL.deletingLastPathComponent().appending(path: "previous"))
+            let draft = self.draft(title: "Shared")
+            let session = CachedSession(windows: [.init(tabs: [.init(content: .draft(draft))], selectedTabID: draft.id.uuidString)])
+            try previous.saveDraft("Earlier text", id: draft.id)
+            try previous.save(session)
+            try cache.saveDraft("Current text", id: draft.id)
+            try cache.save(session)
+            try cache.importPreviousSession(from: previous.directoryURL)
+            #expect(try cache.loadDraft(id: draft.id) == "Current text")
+            #expect(try cache.load() == session)
+            #expect(try previous.loadDraft(id: draft.id) == "Earlier text")
+        }
+    }
+
+
+    @Test func failedPreviousDocumentsMigrationCanRetryWithoutChangingManifest() throws {
+
+        try self.withCache { cache in
+            let previous = SessionCache(directoryURL: cache.directoryURL.deletingLastPathComponent().appending(path: "previous"))
+            let first = self.draft(title: "Present")
+            let missing = self.draft(title: "Missing")
+            let session = CachedSession(windows: [.init(tabs: [.init(content: .draft(first)), .init(content: .draft(missing))], selectedTabID: missing.id.uuidString)])
+            try previous.saveDraft("Present text", id: first.id)
+            try previous.save(session)
+            try cache.save(CachedSession())
+            #expect(throws: (any Error).self) { try cache.importPreviousSession(from: previous.directoryURL) }
+            #expect(try cache.load() == CachedSession())
+            #expect(try previous.load() == session)
+            try previous.saveDraft("Recovered text", id: missing.id)
+            try cache.importPreviousSession(from: previous.directoryURL)
+            #expect(try cache.load() == session)
+            #expect(try cache.loadDraft(id: first.id) == "Present text")
+            #expect(try cache.loadDraft(id: missing.id) == "Recovered text")
+        }
+    }
+
+
+    @Test func absentPreviousDocumentsCacheDoesNotCreateNewDirectory() throws {
+
+        try self.withCache { cache in
+            let absent = cache.directoryURL.deletingLastPathComponent().appending(path: "absent")
+            try cache.importPreviousSession(from: absent)
+            #expect(!FileManager.default.fileExists(atPath: cache.directoryURL.path))
+        }
+    }
+
+
     private func draft(title: String) -> CachedSession.Draft {
         
         .init(id: UUID(), title: title, encoding: String.Encoding.ascii.rawValue,

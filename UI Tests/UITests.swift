@@ -193,9 +193,14 @@ import Darwin
             try? FileManager.default.removeItem(at: cacheDirectory)
         }
 
+        app.activate()
+        let window = app.windows.firstMatch
+        XCTAssertEqual(app.windows.count, 1, app.debugDescription)
+        XCTAssertEqual(window.tabs.count, 1, app.debugDescription)
+        window.textViews["EditorTextView"].click()
         app.menuBars.menuBarItems["View"].click()
         let hide = app.menuBars.menuItems["Hide Tab Bar"]
-        XCTAssertTrue(hide.isEnabled)
+        XCTAssertTrue(hide.isEnabled, app.debugDescription)
         hide.click()
         let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "count == 0"), object: app.windows.firstMatch.tabGroups)
         XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 10), .completed)
@@ -244,7 +249,8 @@ import Darwin
             .appending(path: "Library/Containers/com.coteditor.CotEditor/Data/tmp/" + cacheDirectoryName)
         let app = XCUIApplication()
         app.launchEnvironment["COTEDITOR_SESSION_CACHE_DIRECTORY"] = cacheDirectory.path
-        app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        // Keep AppKit's machine-owned restoration state outside the isolated session fixtures.
+        app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-ApplePersistenceIgnoreState", "YES"]
         app.launch()
         XCTAssertTrue(app.windows.firstMatch.textViews["EditorTextView"].waitForExistence(timeout: 15))
         XCTAssertTrue(app.windows.firstMatch.tabGroups.firstMatch.exists)
